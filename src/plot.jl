@@ -1,28 +1,33 @@
-export anakgplot
+export anakgplot, sparsematrix_plot
 
 using GLMakie
 using Random
 using Distributions
 using Colors
 using LinearAlgebra
+using SparseArrays
 
 using AssociativeScenesSimulation
 
 mutable struct State
     neuronpositions::Dict{UInt, Point3f}
+    connections::Dict{UInt, Vector{Point3f}}
+    scenespositions::Dict{UInt, Point3f}
+    scenesconnections::Dict{UInt, Vector{Point3f}}
 
-    State() = new(Dict())
+    State() = new(Dict(), Dict(), Dict(), Dict())
 end
 
 state = State()
 
 function anakgplot(
     file::String=ANAKG_SAMPLE_MAT_FILE;
-    resolution=primary_resolution(), camera3d=true, background=:azure1,
-    randomscale=0.3,
-    neuron_outercolor=RGBA{Float32}(0.53, 0.81, 1.0, 0.5), 
-    neuron_innercolor=RGBA{Float32}(0.0, 0.0, 0.55, 0.88),
-    neuron_outersize=0.2 , neuron_innersize=0.07
+    resolution=primary_resolution(), camera3d=true, background=:white,
+    randomscale=0.3, sides=6, sparsity=1,
+    neuron_outercolor=RGBA{Float32}(0.39, 0.58, 0.93, 0.44), 
+    neuron_innercolor=RGBA{Float32}(0.0, 0.0, 0.5, 0.88),  
+    neuron_outersize=0.11 , neuron_innersize=0.035,
+    connectionthickness=0.025, connectioncolor=RGBA{Float32}(0.15, 0.25, 0.55, 0.35)
 )
     global state = State()
 
@@ -30,8 +35,8 @@ function anakgplot(
         resolution, camera3d, background
     )
     
-    sides = 6
     data = anakgload(file)
+    data = data[1:Int(floor(size(data, 1) * sparsity)), 1:Int(floor(size(data, 2) * sparsity))]
     neuronsnumber = size(data, 1)
     neuronsnumber_perside = neuronsnumber / sides
     sidelength = √(neuronsnumber_perside)
@@ -66,21 +71,56 @@ function anakgplot(
     updatepositions(
         state, sides, neuronsnumber, sideranges, sidelength_int, randomscale
     )
-    drawnetwork(
+    drawneurons(
         state, data, parentscene,
         neuron_outercolor, neuron_innercolor, neuron_outersize, neuron_innersize
     )
+    drawconnections(state, data, parentscene, connectionthickness, connectioncolor)
 
     figure
 end
 
-function drawnetwork(
+function drawconnections(
+    state::State, data::Matrix{Float64}, parentscene::LScene,
+    linewidth::Float64, color
+)
+    connections = state.connections
+    neuronpositions = state.neuronpositions
+    neuronpositions = collect(values(neuronpositions))
+    neuroncounter = data[collect(diagind(data))][1:length(neuronpositions)]
+    neuroncounter_scaled = minmax(neuroncounter)
+
+    for x = axes(data)[1][1:length(neuronpositions)]
+        for y in 1:(x - 1)
+            if data[x, y] > 0.0 && x != y
+                xpos = neuronpositions[x]
+                ypos = neuronpositions[y]
+                if haskey(connections, x)
+                    append!(connections[x], Point3f[xpos, ypos])
+                else
+                    connections[x] = Point3f[xpos, ypos]
+                end
+            end
+        end
+    end
+
+    for key in keys(connections)
+        push!(connections[key], neuronpositions[key])
+    end
+
+    for (id, points) in connections
+        linewidth = linewidth + 0.0058 * neuroncounter_scaled[id]
+        lines!(parentscene, points, linewidth=linewidth, color=color)
+    end
+end
+
+function drawneurons(
     state::State, data::Matrix{Float64}, parentscene::LScene,
     neuron_outercolor::RGBA, neuron_innercolor::RGBA,
     neuron_outersize::Float64, neuron_innersize::Float64
 )
     neuronpositions = collect(values(state.neuronpositions))
-    neuroncounter = data[collect(diagind(data))]
+    neuroncounter = data[collect(diagind(data))][1:length(neuronpositions)]
     neuroncounter_scaled = minmax(neuroncounter)
     
     innercolors = repeat([neuron_innercolor], length(neuronpositions))
@@ -108,7 +148,7 @@ function updatepositions(
     sidelength_int::Int,
     randomscale::Float64
 )
-    sideoffset = 0.05sidelength_int
+    sideoffset = 0.035sidelength_int
     lastside = 2sideoffset + sidelength_int
 
     neuronid = 1
@@ -208,4 +248,21 @@ function minmax(array::AbstractArray)
     max = maximum(array)
     range = max - min
     (array .- min) ./ range
+end
+
+function sparsematrix_plot(file::String=ANAKG_SAMPLE_MAT_FILE)
+    data = anakgload(file)
+    for i in axes(data)[1]
+        data[i, i] = 0.0
+    end
+
+    f, ax, plt = spy(
+        sparse(data), 
+        markersize = 4, marker = :circle, framecolor = :lightgrey, colormap=:RdBu
+    )
+
+    hidedecorations!(ax) # remove axis labeling
+    ax.title = "Visualization of a ANAKG adjacency matrix"
+
+    f
 end
