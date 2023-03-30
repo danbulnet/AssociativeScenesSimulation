@@ -26,9 +26,6 @@ function anakgplot(
 )
     global state = State()
 
-    set_theme!(theme_black(), resolution=resolution)
-    GLMakie.activate!(; framerate=120, fullscreen=true)
-
     figure, parentscene, camera = createscenes(
         resolution, camera3d, background
     )
@@ -39,15 +36,11 @@ function anakgplot(
     neuronsnumber_perside = neuronsnumber / sides
     sidelength = √(neuronsnumber_perside)
     sidelength_int = Int(floor(sidelength))
-    println("sidelength_int $sidelength_int")
     lengthdiff = neuronsnumber - ceil(sidelength_int^2 * sides)
-    println("lengthdiff $lengthdiff")
     
     lengthdiff_int = lengthdiff ÷ (sidelength_int * sides)
-    println("lengthdiff_int $lengthdiff_int")
     lengthdiff_rem = lengthdiff % sidelength_int
-    println("lengthdiff_rem $lengthdiff_rem")
-    sideranges = []
+    sideranges = LinRange[]
     for i in 1:2sides
         siderange = if i % 2 == 0
             siderange = LinRange(
@@ -70,28 +63,51 @@ function anakgplot(
         push!(sideranges, siderange)
     end
 
-    # siderangex, siderangey, siderangez, lengthdiff_rem = if lengthdiff > 3sides
-    #     lengthdiff_int = lengthdiff ÷ 3sides
-    #     range = LinRange(
-    #         0.0, 
-    #         sidelength_int + lengthdiff_int, 
-    #         sidelength_int + lengthdiff_int
-    #     )
-    #     range, range, range, lengthdiff % 3sides
-    # else
-    #     lengthdiff_int = lengthdiff ÷ sides 
-    #     range = LinRange(0.0, sidelength_int, sidelength_int)
-    #     zrange = LinRange(
-    #         0.0, 
-    #         sidelength_int + lengthdiff_int, 
-    #         sidelength_int + lengthdiff_int
-    #     )
-    #     range, range, zrange, lengthdiff % 3sides
-    # end
-    # siderangex = LinRange(0.0, sidelength_int, sidelength_int)
-    # siderangey = LinRange(0.0, sidelength_int, sidelength_int)
-    # siderangez = LinRange(0.0, sidelength_int, sidelength_int)
+    updatepositions(
+        state, sides, neuronsnumber, sideranges, sidelength_int, randomscale
+    )
+    drawnetwork(
+        state, data, parentscene,
+        neuron_outercolor, neuron_innercolor, neuron_outersize, neuron_innersize
+    )
 
+    figure
+end
+
+function drawnetwork(
+    state::State, data::Matrix{Float64}, parentscene::LScene,
+    neuron_outercolor::RGBA, neuron_innercolor::RGBA,
+    neuron_outersize::Float64, neuron_innersize::Float64
+)
+    neuronpositions = collect(values(state.neuronpositions))
+    neuroncounter = data[collect(diagind(data))]
+    neuroncounter_scaled = minmax(neuroncounter)
+    
+    innercolors = repeat([neuron_innercolor], length(neuronpositions))
+    innersizes = repeat([neuron_innersize], length(neuronpositions)) .+ 
+        neuroncounter_scaled .* 0.15
+    meshscatter!(
+        parentscene, neuronpositions, 
+        markersize=innersizes, color=innercolors
+    )
+    
+    outercolors = repeat([neuron_outercolor], length(neuronpositions))
+    outersizes = repeat([neuron_outersize], length(neuronpositions)) .+ 
+        neuroncounter_scaled .* 0.15
+    meshscatter!(
+        parentscene, neuronpositions, 
+        markersize=outersizes, color=outercolors
+    )
+end
+
+function updatepositions(
+    state::State,
+    sides::Int,
+    neuronsnumber::Int,
+    sideranges::Vector{LinRange},
+    sidelength_int::Int,
+    randomscale::Float64
+)
     sideoffset = 0.05sidelength_int
     lastside = 2sideoffset + sidelength_int
 
@@ -143,31 +159,16 @@ function anakgplot(
             end
         end
     end
-
-    neuronpositions = collect(values(state.neuronpositions))
-    neuroncounter = data[collect(diagind(data))]
-    neuroncounter_scaled = minmax(neuroncounter)
-    
-    innercolors = repeat([neuron_innercolor], length(neuronpositions))
-    innersizes = repeat([neuron_innersize], length(neuronpositions)) .+ 
-        neuroncounter_scaled .* 0.15
-    meshscatter!(
-        parentscene, neuronpositions, 
-        markersize=innersizes, color=innercolors
-    )
-    
-    outercolors = repeat([neuron_outercolor], length(neuronpositions))
-    outersizes = repeat([neuron_outersize], length(neuronpositions)) .+ 
-        neuroncounter_scaled .* 0.15
-    meshscatter!(
-        parentscene, neuronpositions, 
-        markersize=outersizes, color=outercolors
-    )
-
-    figure
 end
 
 function createscenes(resolution, camera3d, background)
+    if background == :black
+        set_theme!(theme_black(), resolution=resolution)
+    else
+        set_theme!(theme_light(), resolution=resolution)
+    end
+    GLMakie.activate!(; framerate=120, fullscreen=true)
+
     figure = Figure()
     rowsize!(figure.layout, 1, Fixed(resolution[2]))
 
