@@ -12,10 +12,12 @@ using AssociativeScenesSimulation
 mutable struct State
     neuronpositions::Dict{UInt, Point3f}
     connections::Dict{UInt, Vector{Point3f}}
+    activeconnections::Dict{UInt, Vector{Point3f}}
     scenespositions::Dict{UInt, Point3f}
     scenesconnections::Dict{UInt, Vector{Point3f}}
+    activeneurons::Vector{UInt}
 
-    State() = new(Dict(), Dict(), Dict(), Dict())
+    State() = new(Dict(), Dict(), Dict(), Dict(), Dict(), Vector())
 end
 
 state = State()
@@ -23,11 +25,19 @@ state = State()
 function anakgplot(
     file::String=ANAKG_SAMPLE_MAT_FILE;
     resolution=primary_resolution(), camera3d=true, background=:white,
-    randomscale=0.3, sides=6, sparsity=1,
+    randomscale=0.3, sides=6, sparsity=0.5,
     neuron_outercolor=RGBA{Float32}(0.39, 0.58, 0.93, 0.44), 
     neuron_innercolor=RGBA{Float32}(0.0, 0.0, 0.5, 0.88),  
+    scene_outercolor=RGBA{Float32}(0.7, 0.7, 0.7, 0.44), 
+    scene_innercolor=RGBA{Float32}(0.08, 0.08, 0.08, 0.88), 
+    active_outercolor=RGBA{Float32}(0.6, 0.98, 0.6, 0.58), 
+    active_innercolor=RGBA{Float32}(0.0, 0.39, 0.0, 0.95), 
     neuron_outersize=0.11 , neuron_innersize=0.035,
-    connectionthickness=0.025, connectioncolor=RGBA{Float32}(0.15, 0.25, 0.55, 0.35)
+    scene_outersize=0.18 , scene_innersize=0.058,
+    connectionthickness=0.025, connectioncolor=RGBA{Float32}(0.15, 0.25, 0.55, 0.35),
+    active_connectioncolor=RGBA{Float32}(0.15, 0.25, 0.55, 0.85),
+    scene_connectionthickness=1.5, scene_connectioncolor=RGBA{Float32}(0.13, 0.55, 0.13, 0.85),
+    showallconnections=false
 )
     global state = State()
 
@@ -71,20 +81,94 @@ function anakgplot(
     updatepositions(
         state, sides, neuronsnumber, sideranges, sidelength_int, randomscale
     )
+    drawscences(
+        state, parentscene, 208,
+        sidelength_int, -2.5,
+        scene_outercolor, scene_innercolor, scene_outersize, scene_innersize,
+        scene_connectionthickness, scene_connectioncolor,
+        active_outercolor, active_innercolor
+    )
     drawneurons(
         state, data, parentscene,
-        neuron_outercolor, neuron_innercolor, neuron_outersize, neuron_innersize
+        neuron_outercolor, neuron_innercolor, neuron_outersize, neuron_innersize,
+        active_outercolor, active_innercolor
     )
-    drawconnections(state, data, parentscene, connectionthickness, connectioncolor)
+    drawconnections(
+        state, data, parentscene, connectionthickness, 
+        connectioncolor, active_connectioncolor, showallconnections
+    )
 
     figure
 end
 
+function drawscences(
+    state::State, parentscene::LScene, scenesnumber::Int,
+    sidelength_int::Int, sideoffset::Float64,
+    scene_outercolor::RGBA, scene_innercolor::RGBA,
+    scene_outersize::Float64, scene_innersize::Float64,
+    linewidth::Float64, color,
+    active_outercolor, active_innercolor
+)
+    side_smalloffset = 0.035sidelength_int
+    scenceslength_int = Int(ceil(√(scenesnumber)))
+    siderangey = LinRange(0.7, 0.7 + sidelength_int, scenceslength_int)
+    siderangez = LinRange(0.0, sidelength_int, scenceslength_int + 1)
+    sceneid = 1
+    scenespositions = state.scenespositions
+    for y=siderangey, z=siderangez
+        sceneid > scenesnumber && break
+
+        ypos = y + side_smalloffset
+        zpos = z + side_smalloffset
+        scenespositions[sceneid] = Point3f(sideoffset, ypos, zpos)
+        sceneid += 1
+    end
+    
+    # activescenes = [scenesnumber ÷ 2, scenesnumber - 3]
+    activescenes = [scenesnumber - 3]
+    activeindices = findall(x -> x in activescenes, collect(keys(scenespositions)))
+
+    positions = collect(values(scenespositions))
+    innercolors = repeat([scene_innercolor], length(scenespositions))
+    innercolors[activeindices] .= active_innercolor
+    innersizes = repeat([scene_innersize], length(scenespositions))
+    meshscatter!(
+        parentscene, positions, 
+        markersize=innersizes, color=innercolors
+    )
+    
+    outercolors = repeat([scene_outercolor], length(scenespositions))
+    outercolors[activeindices] .= active_outercolor
+    outersizes = repeat([scene_outersize], length(scenespositions))
+    meshscatter!(
+        parentscene, positions, 
+        markersize=outersizes, color=outercolors
+    )
+
+    for sceneid in activescenes
+        sceneconnections = state.scenesconnections
+        sceneposition = scenespositions[sceneid]
+        sceneconnections[sceneid] = Point3f[sceneposition]
+        neuronids = Int.(floor.(1.0 .+ (rand(25) * 100)))
+        append!(state.activeneurons, neuronids)
+        neuronpositions = collect(values(state.neuronpositions))[neuronids]
+        for pos in neuronpositions
+            append!(sceneconnections[sceneid], Point3f[pos, sceneposition])
+        end
+
+        for (id, points) in sceneconnections
+            linewidth = linewidth
+            lines!(parentscene, points, linewidth=linewidth, color=color)
+        end
+    end
+end
+
 function drawconnections(
     state::State, data::Matrix{Float64}, parentscene::LScene,
-    linewidth::Float64, color
+    linewidth::Float64, color, active_connectioncolor, showall
 )
     connections = state.connections
+    activeconnections = state.activeconnections
     neuronpositions = state.neuronpositions
     neuronpositions = collect(values(neuronpositions))
     neuroncounter = data[collect(diagind(data))][1:length(neuronpositions)]
@@ -95,11 +179,25 @@ function drawconnections(
             if data[x, y] > 0.0 && x != y
                 xpos = neuronpositions[x]
                 ypos = neuronpositions[y]
-                if haskey(connections, x)
-                    append!(connections[x], Point3f[xpos, ypos])
-                else
-                    connections[x] = Point3f[xpos, ypos]
+                if !(x in state.activeneurons && y in state.activeneurons)
+                    if haskey(connections, x)
+                        append!(connections[x], Point3f[xpos, ypos])
+                    else
+                        connections[x] = Point3f[xpos, ypos]
+                    end
                 end
+            end
+        end
+    end
+
+    for x = state.activeneurons, y = state.activeneurons
+        if x != y
+            xpos = neuronpositions[x]
+            ypos = neuronpositions[y]
+            if haskey(activeconnections, x)
+                append!(activeconnections[x], Point3f[xpos, ypos])
+            else
+                activeconnections[x] = Point3f[xpos, ypos]
             end
         end
     end
@@ -108,22 +206,34 @@ function drawconnections(
         push!(connections[key], neuronpositions[key])
     end
 
-    for (id, points) in connections
-        linewidth = linewidth + 0.0058 * neuroncounter_scaled[id]
-        lines!(parentscene, points, linewidth=linewidth, color=color)
+    if showall
+        for (id, points) in connections
+            linewidth = linewidth + 0.0058 * neuroncounter_scaled[id]
+            lines!(parentscene, points, linewidth=linewidth, color=color)
+        end
+    end
+    for (id, points) in activeconnections
+        linewidth = linewidth + 1.0 * neuroncounter_scaled[id]
+        lines!(parentscene, points, linewidth=linewidth, color=active_connectioncolor)
     end
 end
 
 function drawneurons(
     state::State, data::Matrix{Float64}, parentscene::LScene,
     neuron_outercolor::RGBA, neuron_innercolor::RGBA,
-    neuron_outersize::Float64, neuron_innersize::Float64
+    neuron_outersize::Float64, neuron_innersize::Float64,
+    active_outercolor, active_innercolor
 )
     neuronpositions = collect(values(state.neuronpositions))
     neuroncounter = data[collect(diagind(data))][1:length(neuronpositions)]
     neuroncounter_scaled = minmax(neuroncounter)
+
+    activeindices = findall(
+        x -> x in state.activeneurons, collect(keys(neuronpositions))
+    )
     
     innercolors = repeat([neuron_innercolor], length(neuronpositions))
+    innercolors[activeindices] .= active_innercolor
     innersizes = repeat([neuron_innersize], length(neuronpositions)) .+ 
         neuroncounter_scaled .* 0.15
     meshscatter!(
@@ -132,6 +242,7 @@ function drawneurons(
     )
     
     outercolors = repeat([neuron_outercolor], length(neuronpositions))
+    outercolors[activeindices] .= active_outercolor
     outersizes = repeat([neuron_outersize], length(neuronpositions)) .+ 
         neuroncounter_scaled .* 0.15
     meshscatter!(
