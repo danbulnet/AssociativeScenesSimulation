@@ -25,7 +25,7 @@ state = State()
 function anakgplot(
     file::String=ANAKG_SAMPLE_MAT_FILE;
     resolution=primary_resolution(), camera3d=true, background=:white,
-    randomscale=0.3, sides=6, sparsity=0.5,
+    randomscale=0.3, sides=6, sparsity=1.0,
     neuron_outercolor=RGBA{Float32}(0.39, 0.58, 0.93, 0.44), 
     neuron_innercolor=RGBA{Float32}(0.0, 0.0, 0.5, 0.88),  
     scene_outercolor=RGBA{Float32}(0.7, 0.7, 0.7, 0.44), 
@@ -83,7 +83,7 @@ function anakgplot(
     )
     drawscences(
         state, parentscene, 208,
-        sidelength_int, -2.5,
+        sidelength_int, 2.5,
         scene_outercolor, scene_innercolor, scene_outersize, scene_innersize,
         scene_connectionthickness, scene_connectioncolor,
         active_outercolor, active_innercolor
@@ -110,6 +110,7 @@ function drawscences(
     active_outercolor, active_innercolor
 )
     side_smalloffset = 0.035sidelength_int
+    lastside = 2side_smalloffset + sidelength_int
     scenceslength_int = Int(ceil(√(scenesnumber)))
     siderangey = LinRange(0.7, 0.7 + sidelength_int, scenceslength_int)
     siderangez = LinRange(0.0, sidelength_int, scenceslength_int + 1)
@@ -120,7 +121,7 @@ function drawscences(
 
         ypos = y + side_smalloffset
         zpos = z + side_smalloffset
-        scenespositions[sceneid] = Point3f(sideoffset, ypos, zpos)
+        scenespositions[sceneid] = Point3f(lastside + sideoffset, ypos, zpos)
         sceneid += 1
     end
     
