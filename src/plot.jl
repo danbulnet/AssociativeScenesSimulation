@@ -27,7 +27,7 @@ function anakgplot(
     file::String=ANAKG_SAMPLE_MAT_FILE;
     resolution=primary_resolution(), camera3d=true, background=:white,
     randomscale=0.2, sides=3, sparsity=0.34,
-    observedobjects=8, cliquesize=20, noscenes=1000,
+    observedobjects=5, cliquesize=15, noscenes=1000,
     inactiveneuron_outercolor=RGBA{Float32}(0.39, 0.58, 0.93, 0.24), 
     inactiveneuron_innercolor=RGBA{Float32}(0.0, 0.0, 0.5, 0.18),  
     neuron_outercolor=RGBA{Float32}(0.39, 0.58, 0.93, 0.44), 
@@ -40,7 +40,7 @@ function anakgplot(
     neuron_outersize=0.15 , neuron_innersize=0.055,
     scene_outersize=0.15 , scene_innersize=0.0,
     connectionthickness=0.1, connectioncolor=RGBA{Float32}(0.15, 0.25, 0.55, 0.05),
-    active_connectioncolor=RGBA{Float32}(0.55, 0.55, 0.55, 0.25),
+    active_connectioncolor=RGBA{Float32}(0.55, 0.55, 0.55, 0.35),
     scene_connectionthickness=2.5, scene_connectioncolor=RGBA{Float32}(0.3, 0.7, 0.3, 0.5),
     showallconnections=false,
     scene_sideoffset=1.5
@@ -191,7 +191,7 @@ function drawscences(
 
         for (id, points) in sceneconnections
             linewidth = linewidth
-            lines!(parentscene, points, linewidth=linewidth, color=linecolor)
+            lines!(parentscene, points, linewidth=linewidth, color=linecolor, linestyle=:dash)
         end
     end
 end
