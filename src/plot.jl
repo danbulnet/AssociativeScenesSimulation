@@ -1,4 +1,4 @@
-export anakgplot, sparsematrix_plot
+export anakgplot, sparsematrix_plot, animate, imageseries
 
 using GLMakie
 using Random
@@ -23,32 +23,65 @@ end
 
 state = State()
 
+function imageseries(
+    outfile_base::String="output/anakg"; 
+    steps=4, 
+    amplitude°=40, 
+    cameraposition=Vec3f(0, 15, 0), 
+    positionmultiplier=10,
+    seed::Int=25
+)
+    for (i, step) in enumerate(-steps:steps)
+        file = outfile_base * string(i) * ".png"
+        amplitude = amplitude° * π / 180
+        amplitudesetp = amplitude / steps
+        x = cameraposition[1] - sin(step * amplitudesetp) * positionmultiplier
+        y = cameraposition[2] - cos(step * amplitudesetp) * positionmultiplier
+        anakgplot(;cameraposition=Vec3f(x, y, cameraposition[3]), outfile=file, seed=seed)
+    end
+end
+
+function animate(figure, parentscene, camera)
+    # ax = Axis3(figure)
+    record(figure, "anakg.mp4", 1:240) do frame
+        x = (frame - 120) / 20
+        y = 15 - abs(x / 3)
+        println("$frame: x:$x y:$y")
+        # ax.azimuth[] = 1.7pi + 0.3 * sin(2pi * frame / 120)
+        update_cam!(parentscene.scene, camera, Vec3f(x, y, 3), Vec3f(0.0, 0, 0))
+    end
+end
+
 function anakgplot(
     file::String=ANAKG_SAMPLE_MAT_FILE;
     resolution=primary_resolution(), camera3d=true, background=:white,
-    randomscale=0.2, sides=3, sparsity=0.34,
-    observedobjects=5, cliquesize=15, noscenes=1000,
-    inactiveneuron_outercolor=RGBA{Float32}(0.39, 0.58, 0.93, 0.24), 
-    inactiveneuron_innercolor=RGBA{Float32}(0.0, 0.0, 0.5, 0.18),  
+    randomscale=0.2, sides=3, sparsity=1.0,
+    observedobjects=8, cliquesize=15, noscenes=1000,
+    inactiveneuron_outercolor=RGBA{Float32}(0.39, 0.58, 0.93, 0.12), 
+    inactiveneuron_innercolor=RGBA{Float32}(0.0, 0.0, 0.5, 0.08),  
     neuron_outercolor=RGBA{Float32}(0.39, 0.58, 0.93, 0.44), 
     neuron_innercolor=RGBA{Float32}(0.0, 0.0, 0.5, 0.58),  
-    scene_outercolor=RGBA{Float32}(0.7, 0.7, 0.7, 0.44), 
-    scene_innercolor=RGBA{Float32}(0.08, 0.08, 0.08, 0.38),
+    scene_outercolor=RGBA{Float32}(0.7, 0.7, 0.7, 0.14), 
+    scene_innercolor=RGBA{Float32}(0.08, 0.08, 0.08, 0.18),
     scene_activecolor=RGBA{Float32}(0.6, 0.98, 0.6, 0.88),
     active_outercolor=RGBA{Float32}(0.88, 0.88, 0.6, 0.58), 
     active_innercolor=RGBA{Float32}(0.88, 0.88, 0.0, 0.95), 
     neuron_outersize=0.15 , neuron_innersize=0.055,
     scene_outersize=0.15 , scene_innersize=0.0,
     connectionthickness=0.1, connectioncolor=RGBA{Float32}(0.15, 0.25, 0.55, 0.05),
-    active_connectioncolor=RGBA{Float32}(0.55, 0.55, 0.55, 0.35),
+    active_connectioncolor=RGBA{Float32}(0.0, 0.0, 0.0, 0.25),
     scene_connectionthickness=2.5, scene_connectioncolor=RGBA{Float32}(0.3, 0.7, 0.3, 0.5),
     showallconnections=false,
-    scene_sideoffset=1.5
+    scene_sideoffset=1.5,
+    outfile::Union{String, Nothing}=nothing,
+    cameraposition=Vec3f(0, 15, 3),
+    seed::Int=25
 )
     global state = State()
+    Random.seed!(seed)
 
     figure, parentscene, camera = createscenes(
-        resolution, camera3d, background
+        resolution, camera3d, background, cameraposition
     )
     
     data = anakgload(file)
@@ -87,7 +120,7 @@ function anakgplot(
         push!(sideranges, siderange)
     end
 
-    activate!(state, neuronsnumber, observedobjects, cliquesize)
+    activate!(state, neuronsnumber, observedobjects, cliquesize, sparsity)
 
     updatepositions(
         state, sides, neuronsnumber, sideranges, sidelength_int, randomscale
@@ -113,11 +146,15 @@ function anakgplot(
         connectioncolor, active_connectioncolor, showallconnections
     )
 
-    figure
+    if !isnothing(outfile)
+        save(outfile, figure)
+    end
+
+    figure, parentscene, camera
 end
 
-function activate!(state::State, neuronsnumber, observedobjects, cliquesize)
-    neuronids = rand(1:neuronsnumber, observedobjects)
+function activate!(state::State, neuronsnumber, observedobjects, cliquesize, sparsity)
+    neuronids = rand(1:(neuronsnumber * sparsity), observedobjects)
     append!(state.activeneurons, neuronids)
 
     activenumber = length(state.activeneurons)
@@ -191,7 +228,7 @@ function drawscences(
 
         for (id, points) in sceneconnections
             linewidth = linewidth
-            lines!(parentscene, points, linewidth=linewidth, color=linecolor, linestyle=:dash)
+            lines!(parentscene, points, linewidth=linewidth, color=linecolor, linestyle=:dot)
         end
     end
 end
@@ -241,7 +278,7 @@ function drawconnections(
 
     if showall
         for (id, points) in connections
-            linewidth = linewidth + 0.0058 * neuroncounter_scaled[id]
+            linewidth = linewidth + 2.5 * neuroncounter_scaled[id]
             lines!(parentscene, points, linewidth=linewidth, color=color)
         end
     end
@@ -351,7 +388,7 @@ function updatepositions(
     end
 end
 
-function createscenes(resolution, camera3d, background)
+function createscenes(resolution, camera3d, background, cameraposition)
     if background == :black
         set_theme!(theme_black(), resolution=resolution)
     else
@@ -388,7 +425,7 @@ function createscenes(resolution, camera3d, background)
         cam2d!(parentscene.scene)
     end
     # camc = cameracontrols(parentscene.scene)
-    # update_cam!(parentscene.scene, camc, Vec3f(0, 5, 5), Vec3f(0.0, 0, 0))
+    update_cam!(parentscene.scene, camera, cameraposition, Vec3f(0.0, 0, 0))
 
     figure, parentscene, camera
 end
